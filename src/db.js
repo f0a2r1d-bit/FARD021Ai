@@ -19,7 +19,7 @@ try {
 for (const k of Object.keys(initial)) if (!(k in store)) store[k] = structuredClone(initial[k]);
 for (const k of Object.keys(initial.seq)) if (!(k in store.seq)) store.seq[k] = 0;
 const adminEmail=String(process.env.ADMIN_EMAIL||"").trim().toLowerCase();
-if(adminEmail){for(const u of store.users) if(u.email===adminEmail){u.is_admin=1;if(u.credits<1000)u.credits=1000;}}
+for(const u of store.users) if(u.is_admin){if(u.credits<1000)u.credits=1000;} if(adminEmail){for(const u of store.users) if(u.email===adminEmail){u.is_admin=1;if(u.credits<1000)u.credits=1000;}}
 
 const now = () => new Date().toISOString();
 function persist() {
