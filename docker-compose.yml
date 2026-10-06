@@ -1,0 +1,13 @@
+services:
+  fard021:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file: .env
+    volumes:
+      - fard021_data:/app/data
+      - fard021_uploads:/app/uploads
+    restart: unless-stopped
+volumes:
+  fard021_data:
+  fard021_uploads:
