@@ -1,0 +1,11 @@
+# نقشه راه Fard021 AI
+- Multi-model chat
+- Image / video / audio
+- Credits and plans
+- Support/admin
+- PWA + Expo starter
+- PostgreSQL + Redis برای مقیاس production
+- Object Storage و queue/worker
+- پرداخت و اشتراک واقعی
+- RAG و file search
+- Agent tools و observability
