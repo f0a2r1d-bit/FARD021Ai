@@ -4,10 +4,10 @@ import {freeModels,geminiChat,hfChat,pollinationsImage,geminiTTS} from "./free-a
 const openai=process.env.OPENAI_API_KEY?new OpenAI({apiKey:process.env.OPENAI_API_KEY}):null;
 const compat=process.env.COMPAT_API_KEY&&process.env.COMPAT_BASE_URL?new OpenAI({apiKey:process.env.COMPAT_API_KEY,baseURL:process.env.COMPAT_BASE_URL}):null;
 const registry=[
-{id:"luna",label:"Fard021 · Luna",kind:"chat",provider:"openai",model:process.env.OPENAI_TEXT_MODEL||"gpt-5.6-luna"},
-{id:"sol",label:"Fard021 · Sol",kind:"chat",provider:"openai",model:process.env.OPENAI_REASONING_MODEL||"gpt-5.6-sol"},
+{id:"luna",label:"Fard021 · Luna",kind:"chat",provider:"openai",model:process.env.OPENAI_TEXT_MODEL||"gpt-6-luna"},
+{id:"sol",label:"Fard021 · Sol",kind:"chat",provider:"openai",model:process.env.OPENAI_REASONING_MODEL||"gpt-6.1-sol"},
 {id:"astra",label:"Fard021 · Astra",kind:"chat",provider:"openai",model:process.env.OPENAI_PRO_MODEL||"gpt-6-astra"},
-{id:"image",label:"Fard021 · تصویر",kind:"image",provider:"openai",model:process.env.OPENAI_IMAGE_MODEL||"gpt-image-1"},
+{id:"image",label:"Fard021 · تصویر",kind:"image",provider:"openai",model:process.env.OPENAI_IMAGE_MODEL||"gpt-image-2"},
 {id:"video",label:"Fard021 · ویدیو",kind:"video",provider:"openai",model:process.env.OPENAI_VIDEO_MODEL||"sora-2"},
 {id:"realtime",label:"Fard021 · مکالمه زنده",kind:"voice",provider:"openai",model:process.env.OPENAI_VOICE_MODEL||"gpt-realtime"},
 {id:"transcribe",label:"Fard021 · گفتار به متن",kind:"transcribe",provider:"openai",model:process.env.OPENAI_TRANSCRIBE_MODEL||"gpt-4o-mini-transcribe"},
