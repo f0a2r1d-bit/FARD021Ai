@@ -1,38 +1,103 @@
-import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
-fs.mkdirSync("data",{recursive:true});
-const db=new Database(path.join("data","fard021.sqlite"));db.pragma("journal_mode = WAL");
-db.exec(`
-CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,name TEXT NOT NULL,plan TEXT NOT NULL DEFAULT 'free',credits INTEGER NOT NULL DEFAULT 30,is_admin INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS usage (id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,kind TEXT NOT NULL,cost INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(user_id) REFERENCES users(id));
-CREATE TABLE IF NOT EXISTS generations (id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,kind TEXT NOT NULL,provider TEXT NOT NULL,model TEXT NOT NULL,prompt TEXT NOT NULL,status TEXT NOT NULL,external_id TEXT,result_url TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(user_id) REFERENCES users(id));
-CREATE TABLE IF NOT EXISTS support_tickets (id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,subject TEXT NOT NULL,message TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'open',admin_reply TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(user_id) REFERENCES users(id));
-CREATE TABLE IF NOT EXISTS conversations (id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,title TEXT NOT NULL DEFAULT 'گفتگوی جدید',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(user_id) REFERENCES users(id));
-CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT,conversation_id INTEGER NOT NULL,role TEXT NOT NULL,content TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(conversation_id) REFERENCES conversations(id));
-`);
-try{db.exec("ALTER TABLE users ADD COLUMN credits INTEGER NOT NULL DEFAULT 30")}catch{}
-try{db.exec("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")}catch{}
-try{db.exec("ALTER TABLE support_tickets ADD COLUMN admin_reply TEXT")}catch{}
-export const findUserByEmail=email=>db.prepare("SELECT * FROM users WHERE email=?").get(email.toLowerCase());
-export const findUserById=id=>db.prepare("SELECT id,email,name,plan,credits,is_admin,created_at FROM users WHERE id=?").get(id);
-export function createUser({email,passwordHash,name,isAdmin=false}){const info=db.prepare("INSERT INTO users(email,password_hash,name,is_admin) VALUES(?,?,?,?)").run(email.toLowerCase(),passwordHash,name,isAdmin?1:0);return findUserById(info.lastInsertRowid)}
-export function addCredits(userId,amount){db.prepare("UPDATE users SET credits=MAX(0,credits+?) WHERE id=?").run(amount,userId);return findUserById(userId)}
-export function consumeCredits(userId,cost=1){const r=db.prepare("UPDATE users SET credits=credits-? WHERE id=? AND credits>=?").run(cost,userId,cost,cost);return r.changes>0}
-export function addUsage(userId,kind,cost=1){db.prepare("INSERT INTO usage(user_id,kind,cost) VALUES(?,?,?)").run(userId,kind,cost)}
-export function dailyUsage(userId){return db.prepare("SELECT COALESCE(SUM(cost),0) count FROM usage WHERE user_id=? AND created_at>=datetime('now','start of day')").get(userId).count}
-export function addGeneration(row){const info=db.prepare("INSERT INTO generations(user_id,kind,provider,model,prompt,status,external_id,result_url) VALUES(@user_id,@kind,@provider,@model,@prompt,@status,@external_id,@result_url)").run(row);return db.prepare("SELECT * FROM generations WHERE id=?").get(info.lastInsertRowid)}
-export function updateGeneration(id,patch){const keys=Object.keys(patch);if(!keys.length)return db.prepare("SELECT * FROM generations WHERE id=?").get(id);const set=keys.map(k=>`${k}=@${k}`).join(",");db.prepare(`UPDATE generations SET ${set} WHERE id=@id`).run({...patch,id});return db.prepare("SELECT * FROM generations WHERE id=?").get(id)}
-export const recentGenerations=userId=>db.prepare("SELECT * FROM generations WHERE user_id=? ORDER BY id DESC LIMIT 100").all(userId);
-export function createTicket(userId,subject,message){const info=db.prepare("INSERT INTO support_tickets(user_id,subject,message) VALUES(?,?,?)").run(userId,subject,message);return db.prepare("SELECT * FROM support_tickets WHERE id=?").get(info.lastInsertRowid)}
-export const userTickets=userId=>db.prepare("SELECT * FROM support_tickets WHERE user_id=? ORDER BY id DESC LIMIT 50").all(userId);
-export const allTickets=()=>db.prepare("SELECT t.*,u.email,u.name FROM support_tickets t JOIN users u ON u.id=t.user_id ORDER BY t.id DESC LIMIT 200").all();
-export function updateTicket(id,status,adminReply){db.prepare("UPDATE support_tickets SET status=?,admin_reply=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(status,adminReply||null,id);return db.prepare("SELECT * FROM support_tickets WHERE id=?").get(id)}
-export const allUsers=()=>db.prepare("SELECT id,email,name,plan,credits,is_admin,created_at FROM users ORDER BY id DESC").all();
-export function setUserPlan(id,plan,credits){db.prepare("UPDATE users SET plan=?,credits=? WHERE id=?").run(plan,credits,id);return findUserById(id)}
-export function createConversation(userId,title='گفتگوی جدید'){const r=db.prepare("INSERT INTO conversations(user_id,title) VALUES(?,?)").run(userId,title);return db.prepare("SELECT * FROM conversations WHERE id=?").get(r.lastInsertRowid)}
-export const conversations=userId=>db.prepare("SELECT * FROM conversations WHERE user_id=? ORDER BY updated_at DESC").all(userId);
-export function saveMessage(conversationId,role,content){db.prepare("INSERT INTO messages(conversation_id,role,content) VALUES(?,?,?)").run(conversationId,role,content);db.prepare("UPDATE conversations SET updated_at=CURRENT_TIMESTAMP WHERE id=?").run(conversationId)}
-export const conversationMessages=id=>db.prepare("SELECT role,content,created_at FROM messages WHERE conversation_id=? ORDER BY id ASC").all(id);
-export const findConversationForUser=(id,userId)=>db.prepare("SELECT * FROM conversations WHERE id=? AND user_id=?").get(id,userId);
-export const findGenerationForUserByExternalId=(userId,externalId)=>db.prepare("SELECT * FROM generations WHERE user_id=? AND external_id=? ORDER BY id DESC LIMIT 1").get(userId,externalId);
+
+fs.mkdirSync("data", { recursive: true });
+const file = path.join("data", "fard021.json");
+
+const initial = {
+  users: [], usage: [], generations: [], support_tickets: [],
+  conversations: [], messages: [],
+  seq: { users: 0, usage: 0, generations: 0, support_tickets: 0, conversations: 0, messages: 0 }
+};
+
+let store;
+try {
+  store = JSON.parse(fs.readFileSync(file, "utf8"));
+} catch {
+  store = structuredClone(initial);
+}
+for (const k of Object.keys(initial)) if (!(k in store)) store[k] = structuredClone(initial[k]);
+for (const k of Object.keys(initial.seq)) if (!(k in store.seq)) store.seq[k] = 0;
+
+const now = () => new Date().toISOString();
+function persist() {
+  const tmp = file + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(store));
+  fs.renameSync(tmp, file);
+}
+function idFor(kind) { store.seq[kind] = Number(store.seq[kind] || 0) + 1; return store.seq[kind]; }
+function clone(x) { return x == null ? x : JSON.parse(JSON.stringify(x)); }
+
+export const findUserByEmail = email =>
+  clone(store.users.find(x => x.email === String(email).toLowerCase()));
+
+export const findUserById = id => {
+  const u = store.users.find(x => x.id === Number(id));
+  return clone(u && { id:u.id, email:u.email, name:u.name, plan:u.plan, credits:u.credits, is_admin:u.is_admin, created_at:u.created_at });
+};
+
+export function createUser({email,passwordHash,name,isAdmin=false}) {
+  const user = { id:idFor("users"), email:String(email).toLowerCase(), password_hash:passwordHash,
+    name, plan:"free", credits:30, is_admin:isAdmin?1:0, created_at:now() };
+  store.users.push(user); persist();
+  return findUserById(user.id);
+}
+export function addCredits(userId,amount) {
+  const u=store.users.find(x=>x.id===Number(userId)); if(u) u.credits=Math.max(0,u.credits+Number(amount||0)); persist(); return findUserById(userId);
+}
+export function consumeCredits(userId,cost=1) {
+  const u=store.users.find(x=>x.id===Number(userId)), n=Number(cost||1);
+  if(!u || u.credits<n) return false;
+  u.credits-=n; persist(); return true;
+}
+export function addUsage(userId,kind,cost=1) {
+  store.usage.push({id:idFor("usage"),user_id:Number(userId),kind,cost:Number(cost||1),created_at:now()}); persist();
+}
+export function dailyUsage(userId) {
+  const start=new Date(); start.setHours(0,0,0,0);
+  return store.usage.filter(x=>x.user_id===Number(userId)&&new Date(x.created_at)>=start).reduce((s,x)=>s+Number(x.cost||0),0);
+}
+export function addGeneration(row) {
+  const x={...row,id:idFor("generations"),created_at:now()};
+  store.generations.push(x); persist(); return clone(x);
+}
+export function updateGeneration(id,patch) {
+  const x=store.generations.find(x=>x.id===Number(id)); if(!x)return undefined;
+  Object.assign(x,patch); persist(); return clone(x);
+}
+export const recentGenerations=userId =>
+  clone(store.generations.filter(x=>x.user_id===Number(userId)).sort((a,b)=>b.id-a.id).slice(0,100));
+
+export function createTicket(userId,subject,message) {
+  const x={id:idFor("support_tickets"),user_id:Number(userId),subject,message,status:"open",admin_reply:null,created_at:now(),updated_at:now()};
+  store.support_tickets.push(x); persist(); return clone(x);
+}
+export const userTickets=userId =>
+  clone(store.support_tickets.filter(x=>x.user_id===Number(userId)).sort((a,b)=>b.id-a.id).slice(0,50));
+export const allTickets=() =>
+  clone(store.support_tickets.map(t=>{const u=store.users.find(x=>x.id===t.user_id);return {...t,email:u?.email,name:u?.name};}).sort((a,b)=>b.id-a.id).slice(0,200));
+export function updateTicket(id,status,adminReply) {
+  const x=store.support_tickets.find(x=>x.id===Number(id)); if(!x)return undefined;
+  x.status=status; x.admin_reply=adminReply||null; x.updated_at=now(); persist(); return clone(x);
+}
+export const allUsers=() =>
+  clone(store.users.map(u=>({id:u.id,email:u.email,name:u.name,plan:u.plan,credits:u.credits,is_admin:u.is_admin,created_at:u.created_at})).sort((a,b)=>b.id-a.id));
+export function setUserPlan(id,plan,credits) {
+  const u=store.users.find(x=>x.id===Number(id)); if(u){u.plan=plan;u.credits=Number(credits||0);persist();} return findUserById(id);
+}
+export function createConversation(userId,title="گفتگوی جدید") {
+  const x={id:idFor("conversations"),user_id:Number(userId),title,created_at:now(),updated_at:now()};
+  store.conversations.push(x); persist(); return clone(x);
+}
+export const conversations=userId =>
+  clone(store.conversations.filter(x=>x.user_id===Number(userId)).sort((a,b)=>new Date(b.updated_at)-new Date(a.updated_at)));
+export function saveMessage(conversationId,role,content) {
+  store.messages.push({id:idFor("messages"),conversation_id:Number(conversationId),role,content,created_at:now()});
+  const c=store.conversations.find(x=>x.id===Number(conversationId)); if(c)c.updated_at=now(); persist();
+}
+export const conversationMessages=id =>
+  clone(store.messages.filter(x=>x.conversation_id===Number(id)).sort((a,b)=>a.id-b.id).map(x=>({role:x.role,content:x.content,created_at:x.created_at})));
+export const findConversationForUser=(id,userId) =>
+  clone(store.conversations.find(x=>x.id===Number(id)&&x.user_id===Number(userId)));
+export const findGenerationForUserByExternalId=(userId,externalId) =>
+  clone(store.generations.filter(x=>x.user_id===Number(userId)&&x.external_id===externalId).sort((a,b)=>b.id-a.id)[0]);
