@@ -18,6 +18,8 @@ try {
 }
 for (const k of Object.keys(initial)) if (!(k in store)) store[k] = structuredClone(initial[k]);
 for (const k of Object.keys(initial.seq)) if (!(k in store.seq)) store.seq[k] = 0;
+const adminEmail=String(process.env.ADMIN_EMAIL||"").trim().toLowerCase();
+if(adminEmail){for(const u of store.users) if(u.email===adminEmail){u.is_admin=1;if(u.credits<1000)u.credits=1000;}}
 
 const now = () => new Date().toISOString();
 function persist() {
@@ -38,7 +40,7 @@ export const findUserById = id => {
 
 export function createUser({email,passwordHash,name,isAdmin=false}) {
   const user = { id:idFor("users"), email:String(email).toLowerCase(), password_hash:passwordHash,
-    name, plan:"free", credits:30, is_admin:isAdmin?1:0, created_at:now() };
+    name, plan:"free", credits:50, is_admin:isAdmin?1:0, created_at:now() };
   store.users.push(user); persist();
   return findUserById(user.id);
 }
