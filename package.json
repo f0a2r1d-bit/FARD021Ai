@@ -1,0 +1,6 @@
+{
+  "name":"fard021-ai-free","version":"5.0.0-free","private":true,"description":"Fard021 AI Persian multimodal AI workspace","type":"module",
+  "scripts":{"dev":"node --watch server.js","start":"node server.js"},
+  "engines":{"node":">=20"},
+  "dependencies":{"bcryptjs":"^3.0.2","better-sqlite3":"^12.4.1","dotenv":"^17.2.3","express":"^5.1.0","express-rate-limit":"^8.2.1","helmet":"^8.1.0","jsonwebtoken":"^9.0.2","multer":"^2.0.2","openai":"^6.8.1"}
+}
