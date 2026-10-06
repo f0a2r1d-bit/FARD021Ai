@@ -1,0 +1,1 @@
+const CACHE='fard021-v5';self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(['/','/manifest.json']))));
