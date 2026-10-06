@@ -31,4 +31,15 @@ app.post("/api/realtime/session",auth,async(req,res)=>{try{const s=String(req.bo
 app.get("/api/support",auth,(req,res)=>res.json({items:userTickets(req.user.id)}));app.post("/api/support",auth,(req,res)=>{const subject=clean(req.body.subject,160),message=clean(req.body.message,5000);if(!subject||!message)return res.status(400).json({error:"عنوان و متن الزامی است"});res.json({ticket:createTicket(req.user.id,subject,message)})});
 app.get("/api/admin/users",auth,admin,(_,res)=>res.json({items:allUsers()}));app.post("/api/admin/users/:id/plan",auth,admin,(req,res)=>{const plan=["free","pro","business"].includes(req.body.plan)?req.body.plan:"free";res.json({user:setUserPlan(Number(req.params.id),plan,Math.max(0,Number(req.body.credits||0)))})});app.post("/api/admin/users/:id/credits",auth,admin,(req,res)=>res.json({user:addCredits(Number(req.params.id),Math.max(-100000,Math.min(100000,Number(req.body.amount||0))))}));
 app.get("/api/admin/tickets",auth,admin,(_,res)=>res.json({items:allTickets()}));app.post("/api/admin/tickets/:id",auth,admin,(req,res)=>res.json({ticket:updateTicket(Number(req.params.id),["open","pending","closed"].includes(req.body.status)?req.body.status:"pending",clean(req.body.reply,5000))}));app.get("/api/admin/stats",auth,admin,(_,res)=>res.json({users:allUsers().length,tickets:allTickets().filter(x=>x.status!=="closed").length,models:models().length}));
-app.get(/.*/,(_,res)=>res.sendFile(path.join(__dirname,"public","index.html")));app.listen(port,"0.0.0.0",()=>console.log(`Fard021 AI v5 on http://0.0.0.0:${port}`));
+app.get(/.*/,(_,res)=>res.sendFile(path.join(__dirname,"public","index.html")));
+const httpServer=app.listen(port,"0.0.0.0",()=>console.log(`Fard021 AI v5 on http://0.0.0.0:${port}`));
+let shuttingDown=false;
+const shutdown=signal=>{
+  if(shuttingDown)return;
+  shuttingDown=true;
+  console.log(`Received ${signal}; gracefully shutting down.`);
+  httpServer.close(()=>process.exit(0));
+  setTimeout(()=>process.exit(0),25000).unref();
+};
+process.on("SIGTERM",()=>shutdown("SIGTERM"));
+process.on("SIGINT",()=>shutdown("SIGINT"));
